@@ -22,7 +22,8 @@ on:
   
 jobs:  
   extractor:  
-    runs-on: ubuntu-latest  
+    runs-on: ubuntu-latest
+    environment: Self  
     steps:  
       - name: Checkout code  
         uses: actions/checkout@v4  
@@ -64,7 +65,8 @@ jobs:
           path: ./Temp/extractor  
   
   analyse:  
-    runs-on: ubuntu-latest  
+    runs-on: ubuntu-latest
+    environment: Self  
     needs: extractor  
     steps:  
       - name: Checkout code  
@@ -108,6 +110,7 @@ jobs:
   
   generate:
     runs-on: ubuntu-latest
+    environment: Self  
     needs: analyse
     steps:
       - name: Checkout code
