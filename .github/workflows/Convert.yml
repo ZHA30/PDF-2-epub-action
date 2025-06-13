@@ -66,7 +66,6 @@ jobs:
   
   analyse:  
     runs-on: ubuntu-latest
-    environment: Self  
     needs: extractor  
     steps:  
       - name: Checkout code  
@@ -110,7 +109,6 @@ jobs:
   
   generate:
     runs-on: ubuntu-latest
-    environment: Self  
     needs: analyse
     steps:
       - name: Checkout code
