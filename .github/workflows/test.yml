@@ -1,23 +1,118 @@
-name: test action
-on:
-   workflow_dispatch:
-     inputs:
-       PDF_Download_URL:
-         description: 'URL to download the PDF file'
-         required: true
-       Generate_Epub:
-         description: 'the name of the epub file to generate'
-         required: true
-         default: 'output.epub'
-
-jobs:
-  extractor:
+name: test action  
+on:  
+  workflow_dispatch:  
+    inputs:  
+      PDF_Download_URL:  
+        description: 'URL to download the PDF file'  
+        required: true  
+      Generate_Epub:  
+        description: 'the name of the epub file to generate'  
+        required: true  
+        default: 'output.epub'  
+      LLM_Model:  
+        description: 'LLM model to use for analysis'  
+        required: true  
+        default: 'deepseek-v3'  
+      WINDOWS_TOKENS:  
+        description: 'Number of windows tokens to use'  
+        default: '2000'  
+      THREADS:  
+        description: 'Number of threads to use for processing'  
+        default: '1'  
+  
+jobs:  
+  extractor:  
+    runs-on: ubuntu-latest  
+    steps:  
+      - name: Checkout code  
+        uses: actions/checkout@v4  
+          
+      - name: Set up Python  
+        uses: actions/setup-python@v5  
+        with:  
+          python-version: '3.10.16'  
+          cache: 'pip'  
+  
+      - name: Cache Models  
+        uses: actions/cache@v4  
+        with:  
+          path: ./Models  
+          key: Models-${{ runner.os }}-pdf-craft-0.2.1-onnx-1.21.0  
+          restore-keys: |  
+            Models-${{ runner.os }}-  
+  
+      - name: Create directories  
+        run: |  
+          mkdir -p ./Temp  
+          mkdir -p ./Models  
+  
+      - name: Install dependencies  
+        run: |  
+          pip install pdf-craft==0.2.1  
+          pip install onnxruntime==1.21.0  
+  
+      - name: Download PDF  
+        run: curl -L -o ./Temp/input.pdf "${{ github.event.inputs.PDF_Download_URL }}"  
+  
+      - name: Run extractor  
+        run: python extractor.py ./Temp/input.pdf ./Temp/extractor ./Models  
+        
+      - name: Upload extractor results  
+        uses: actions/upload-artifact@v4  
+        with:  
+          name: extractor-${{ github.event.inputs.Generate_Epub }}  
+          path: ./Temp/extractor  
+  
+  analyse:  
+    runs-on: ubuntu-latest  
+    needs: extractor  
+    steps:  
+      - name: Checkout code  
+        uses: actions/checkout@v4  
+  
+      - name: Set up Python  
+        uses: actions/setup-python@v5  
+        with:  
+          python-version: '3.10.16'  
+          cache: 'pip'  
+  
+      - name: Install dependencies  
+        run: pip install pdf-craft==0.2.1  
+  
+      - name: Download extractor results  
+        uses: actions/download-artifact@v4  
+        with:  
+          name: extractor-${{ github.event.inputs.Generate_Epub }} 
+          path: ./Temp/extractor
+  
+      - name: Create analyse directory  
+        run: mkdir -p ./Temp/analyse  
+            
+      - name: Run analyse  
+        env:  
+          OCR_OUTPUT_DIR: "./Temp/extractor"  
+          FINAL_OUTPUT_DIR: "./Temp/analyse"  
+          LLM_URL: ${{ secrets.LLM_URL }}  
+          LLM_KEY: ${{ secrets.LLM_KEY }}  
+          LLM_MODEL: ${{ github.event.inputs.LLM_Model }}  
+          CORRECTION_MODE: "NO"
+          WINDOWS_TOKENS: ${{ github.event.inputs.WINDOWS_TOKENS }}  
+          THREADS: ${{ github.event.inputs.THREADS }}  
+        run: python analyse.py  
+        
+      - name: Upload final results  
+        uses: actions/upload-artifact@v4  
+        with:  
+          name: analyse-${{ github.event.inputs.Generate_Epub }}  
+          path: ./Temp/analyse
+  
+  generate:
     runs-on: ubuntu-latest
+    needs: analyse
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -25,29 +120,22 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-            pip install pdf-craft==0.2.1
-            pip install onnxruntime==1.21.0
+        run: pip install pdf-craft==0.2.1
 
-      - name: Create Temp directory
-        run: |
-            mkdir -p ./Temp
-            mkdir -p ./Models
-
-      - name: Cache Models
-        uses: actions/cache@v4
+      - name: Download analyse results
+        uses: actions/download-artifact@v4
         with:
-          path:  ./Models
-          key: Models-${{ hashFiles('requirements.txt') }}
+          name: analyse-${{ github.event.inputs.Generate_Epub }}
+          path: ./Temp/analyse
       
-      - name: Cache Temp directory
-        uses: actions/cache@v4
-        with: 
-          path: ./Temp/extractor
-          key: Temp-extractor-${{ github.event.inputs['Generate_Epub'] }}
-
-      - name: Download PDF
-        run: curl -L -o ./Temp/input.pdf "${{ github.event.inputs['PDF_Download_URL'] }}"
-
-      - name: Run extractor
-        run: python extractor.py ./Temp/input.pdf ./Temp/extractor ./Models
+      - name: Create output directory
+        run: mkdir -p ./Temp/generate
+      
+      - name: Run generate
+        run: python generate.py ./Temp/analyse ./Temp/generate/${{ github.event.inputs.Generate_Epub }}
+      
+      - name: Upload generated EPUB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.Generate_Epub }}
+          path: ./Temp/generate/${{ github.event.inputs.Generate_Epub }}
