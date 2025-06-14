@@ -1,0 +1,48 @@
+name: Convert    
+on:    
+  workflow_dispatch:    
+    inputs:    
+      Generate_Epub:    
+        description: 'the name of the epub file to generate'    
+        required: true    
+        default: 'output.epub'  
+      Artifact_Download_URL:  
+        description: 'URL to download the analyse artifact'  
+        required: true  
+  
+jobs:  
+  generate:  
+    runs-on: ubuntu-latest  
+    steps:  
+      - name: Checkout code  
+        uses: actions/checkout@v4  
+  
+      - name: Set up Python  
+        uses: actions/setup-python@v5  
+        with:  
+          python-version: '3.10.16'  
+          cache: 'pip'  
+  
+      - name: Install dependencies  
+        run: pip install pdf-craft==0.2.1  
+  
+      - name: Create directories  
+        run: mkdir -p ./Temp/analyse  
+  
+      - name: Download and extract artifact  
+        run: |  
+          curl -L -o artifact.zip "${{ github.event.inputs.Artifact_Download_URL }}"  
+          unzip -o artifact.zip -d ./Temp/analyse  
+          ls -la ./Temp/analyse  
+        
+      - name: Create output directory  
+        run: mkdir -p ./Temp/generate  
+        
+      - name: Run generate  
+        run: python generate.py ./Temp/analyse ./Temp/generate/${{ github.event.inputs.Generate_Epub }}  
+        
+      - name: Upload generated EPUB  
+        uses: actions/upload-artifact@v4  
+        with:  
+          name: ${{ github.event.inputs.Generate_Epub }}  
+          path: ./Temp/generate/${{ github.event.inputs.Generate_Epub }}

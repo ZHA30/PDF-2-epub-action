@@ -1,0 +1,68 @@
+name: Convert    
+on:    
+  workflow_dispatch:    
+    inputs:     
+      Generate_Epub:    
+        description: 'the name of the epub file to generate'    
+        required: true    
+        default: 'output.epub'  
+      Artifact_Download_URL:  
+        description: 'URL to download the extractor artifact'  
+        required: true  
+      LLM_Model:    
+        description: 'LLM model to use for analysis'    
+        required: true    
+        default: 'deepseek-v3'    
+      WINDOWS_TOKENS:    
+        description: 'Number of windows tokens to use'    
+        default: '2000'    
+      THREADS:    
+        description: 'Number of threads to use for processing'    
+        default: '1'    
+      
+jobs:  
+  analyse:    
+    runs-on: ubuntu-latest  
+    environment: Self  
+    steps:    
+      - name: Checkout code    
+        uses: actions/checkout@v4    
+    
+      - name: Set up Python    
+        uses: actions/setup-python@v5    
+        with:    
+          python-version: '3.10.16'    
+          cache: 'pip'    
+    
+      - name: Install dependencies    
+        run: pip install pdf-craft==0.2.1    
+  
+      - name: Create directories  
+        run: mkdir -p ./Temp/extractor  
+    
+      - name: Download and extract artifact  
+        run: |  
+          curl -L -o artifact.zip "${{ github.event.inputs.Artifact_Download_URL }}"  
+          unzip -o artifact.zip -d ./Temp/extractor  
+          ls -la ./Temp/extractor  
+    
+      - name: Create analyse directory    
+        run: mkdir -p ./Temp/analyse    
+              
+      - name: Run analyse    
+        env:    
+          OCR_OUTPUT_DIR: "./Temp/extractor"    
+          FINAL_OUTPUT_DIR: "./Temp/analyse"    
+          LLM_URL: ${{ secrets.LLM_URL }}    
+          LLM_KEY: ${{ secrets.LLM_KEY }}    
+          LLM_MODEL: ${{ github.event.inputs.LLM_Model }}    
+          CORRECTION_MODE: "NO"  
+          WINDOWS_TOKENS: ${{ github.event.inputs.WINDOWS_TOKENS }}    
+          THREADS: ${{ github.event.inputs.THREADS }}    
+        run: python analyse.py    
+          
+      - name: Upload final results    
+        uses: actions/upload-artifact@v4    
+        with:    
+          name: analyse-${{ github.event.inputs.Generate_Epub }}    
+          path: ./Temp/analyse

@@ -1,0 +1,54 @@
+name: Convert  
+on:  
+  workflow_dispatch:  
+    inputs:  
+      PDF_Download_URL:  
+        description: 'URL to download the PDF file'  
+        required: true  
+      Generate_Epub:  
+        description: 'the name of the epub file to generate'  
+        required: true  
+        default: 'output.epub'  
+
+jobs:  
+  extractor:  
+    runs-on: ubuntu-latest
+    steps:  
+      - name: Checkout code  
+        uses: actions/checkout@v4  
+          
+      - name: Set up Python  
+        uses: actions/setup-python@v5  
+        with:  
+          python-version: '3.10.16'  
+          cache: 'pip'  
+  
+      - name: Cache Models  
+        uses: actions/cache@v4  
+        with:  
+          path: ./Models  
+          key: Models-${{ runner.os }}-pdf-craft-0.2.1-onnx-1.21.0  
+          restore-keys: |  
+            Models-${{ runner.os }}-  
+  
+      - name: Create directories  
+        run: |  
+          mkdir -p ./Temp  
+          mkdir -p ./Models  
+  
+      - name: Install dependencies  
+        run: |  
+          pip install pdf-craft==0.2.1  
+          pip install onnxruntime==1.21.0  
+  
+      - name: Download PDF  
+        run: curl -L -o ./Temp/input.pdf "${{ github.event.inputs.PDF_Download_URL }}"  
+  
+      - name: Run extractor  
+        run: python extractor.py ./Temp/input.pdf ./Temp/extractor ./Models  
+        
+      - name: Upload extractor results  
+        uses: actions/upload-artifact@v4  
+        with:  
+          name: extractor-${{ github.event.inputs.Generate_Epub }}  
+          path: ./Temp/extractor  
