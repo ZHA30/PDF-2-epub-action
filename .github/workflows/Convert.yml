@@ -9,10 +9,18 @@ on:
         description: 'the name of the epub file to generate'  
         required: true  
         default: 'output.epub'  
-      LLM_Model:  
-        description: 'LLM model to use for analysis'  
-        required: true  
-        default: 'deepseek-v3'  
+      LLM_Model_1:    
+        description: 'LLM model 1 to use for analysis'    
+        required: true    
+        default: 'deepseek-v3' 
+      LLM_Model_2:    
+        description: 'LLM model 2 to use for analysis'    
+        required: true    
+        default: 'deepseek-ai/DeepSeek-V3'
+      LLM_Model_3:
+        description: 'LLM model 3 to use for analysis'
+        required: true
+        default: 'deepseek-ai/DeepSeek-V3-0324'   
       WINDOWS_TOKENS:  
         description: 'Number of windows tokens to use'  
         default: '2000'  
@@ -89,24 +97,128 @@ jobs:
       - name: Create analyse directory  
         run: mkdir -p ./Temp/analyse  
             
-      - name: Run analyse  
-        env:  
-          OCR_OUTPUT_DIR: "./Temp/extractor"  
-          FINAL_OUTPUT_DIR: "./Temp/analyse"  
-          LLM_URL: ${{ secrets.LLM_URL }}  
-          LLM_KEY: ${{ secrets.LLM_KEY }}  
-          LLM_MODEL: ${{ github.event.inputs.LLM_Model }}  
-          CORRECTION_MODE: "NO"
-          WINDOWS_TOKENS: ${{ github.event.inputs.WINDOWS_TOKENS }}  
-          THREADS: ${{ github.event.inputs.THREADS }}  
-        run: python analyse.py  
+      - name: Run analyse Part1
+        run: |  
+            models=("${{ github.event.inputs.LLM_Model_1 }}" "${{ github.event.inputs.LLM_Model_2 }}" "${{ github.event.inputs.LLM_Model_3 }}")  
+            max_total_attempts=12  
+            attempt=0  
+            
+            while [ $attempt -lt $max_total_attempts ]; do  
+            model_index=$((attempt % 3))  
+            model="${models[$model_index]}"  
+            model_attempt=$(((attempt / 3) + 1))  
+                
+            echo "Total attempt $((attempt + 1))/$max_total_attempts: Using model $((model_index + 1)) ($model) - attempt $model_attempt"  
+                
+            # 设置环境变量  
+            export OCR_OUTPUT_DIR="./Temp/extractor"  
+            export FINAL_OUTPUT_DIR="./Temp/analyse"  
+            export LLM_URL="${{ secrets.LLM_URL }}"  
+            export LLM_KEY="${{ secrets.LLM_KEY }}"  
+            export LLM_MODEL="$model"  
+            export CORRECTION_MODE="NO"  
+            export WINDOWS_TOKENS="${{ github.event.inputs.WINDOWS_TOKENS }}"  
+            export THREADS="${{ github.event.inputs.THREADS }}"  
+                
+            if python analyse.py; then  
+                echo "Analysis successful with model: $model (attempt $model_attempt)"  
+                exit 0  
+            else  
+                echo "Analysis failed with model: $model (attempt $model_attempt)"  
+                attempt=$((attempt + 1))  
+                if [ $attempt -lt $max_total_attempts ]; then  
+                echo "Retrying in 10 seconds..."  
+                sleep 20 
+                else  
+                echo "All retry attempts exhausted. Analysis unsuccessful."  
+                exit 1  
+                fi  
+            fi  
+            done
         
-      - name: Upload final results  
+      - name: Upload analyse part1 results  
         uses: actions/upload-artifact@v4  
         with:  
-          name: analyse-${{ github.event.inputs.Generate_Epub }}  
+          name: analyse-${{ github.event.inputs.Generate_Epub }}-part1
           path: ./Temp/analyse
   
+  analyse2:
+    runs-on: ubuntu-latest
+    needs: analyse
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install pdf-craft==0.2.1
+
+      - name: Download extractor results  
+        uses: actions/download-artifact@v4  
+        with:  
+          name: extractor-${{ github.event.inputs.Generate_Epub }} 
+          path: ./Temp/extractor
+  
+      - name: Create analyse directory  
+        run: mkdir -p ./Temp/analyse  
+
+      - name: Download analyse results
+        uses: actions/download-artifact@v4
+        with:
+          name: analyse-${{ github.event.inputs.Generate_Epub }}-part1
+          path: ./Temp/analyse
+
+      - name: Run analyse Part1
+        run: |  
+            models=("${{ github.event.inputs.LLM_Model_1 }}" "${{ github.event.inputs.LLM_Model_2 }}" "${{ github.event.inputs.LLM_Model_3 }}")  
+            max_total_attempts=12  
+            attempt=0  
+            
+            while [ $attempt -lt $max_total_attempts ]; do  
+            model_index=$((attempt % 3))  
+            model="${models[$model_index]}"  
+            model_attempt=$(((attempt / 3) + 1))  
+                
+            echo "Total attempt $((attempt + 1))/$max_total_attempts: Using model $((model_index + 1)) ($model) - attempt $model_attempt"  
+                
+            # 设置环境变量  
+            export OCR_OUTPUT_DIR="./Temp/extractor"  
+            export FINAL_OUTPUT_DIR="./Temp/analyse"  
+            export LLM_URL="${{ secrets.LLM_URL }}"  
+            export LLM_KEY="${{ secrets.LLM_KEY }}"  
+            export LLM_MODEL="$model"  
+            export CORRECTION_MODE="NO"  
+            export WINDOWS_TOKENS="${{ github.event.inputs.WINDOWS_TOKENS }}"  
+            export THREADS="${{ github.event.inputs.THREADS }}"  
+                
+            if python analyse.py; then  
+                echo "Analysis successful with model: $model (attempt $model_attempt)"  
+                exit 0  
+            else  
+                echo "Analysis failed with model: $model (attempt $model_attempt)"  
+                attempt=$((attempt + 1))  
+                if [ $attempt -lt $max_total_attempts ]; then  
+                echo "Retrying in 10 seconds..."  
+                sleep 20 
+                else  
+                echo "All retry attempts exhausted. Analysis unsuccessful."  
+                exit 1  
+                fi  
+            fi  
+            done
+
+      - name: Upload analyse part1 results  
+        uses: actions/upload-artifact@v4  
+        with:  
+          name: analyse-${{ github.event.inputs.Generate_Epub }}-final
+          path: ./Temp/analyse
+
+
   generate:
     runs-on: ubuntu-latest
     needs: analyse
@@ -126,7 +238,7 @@ jobs:
       - name: Download analyse results
         uses: actions/download-artifact@v4
         with:
-          name: analyse-${{ github.event.inputs.Generate_Epub }}
+          name: analyse-${{ github.event.inputs.Generate_Epub }}-final
           path: ./Temp/analyse
       
       - name: Create output directory
