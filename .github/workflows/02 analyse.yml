@@ -9,17 +9,25 @@ on:
       Artifact_Download_URL:  
         description: 'URL to download the extractor artifact'  
         required: true  
-      LLM_Model:    
-        description: 'LLM model to use for analysis'    
+      LLM_Model_1:    
+        description: 'LLM model 1 to use for analysis'    
         required: true    
-        default: 'deepseek-v3'    
+        default: 'deepseek-v3' 
+      LLM_Model_2:    
+        description: 'LLM model 2 to use for analysis'    
+        required: true    
+        default: 'deepseek-ai/DeepSeek-V3'
+      LLM_Model_3:
+        description: 'LLM model 3 to use for analysis'
+        required: true
+        default: 'deepseek-ai/DeepSeek-V3-0324'     
       WINDOWS_TOKENS:    
         description: 'Number of windows tokens to use'    
         default: '2000'    
       THREADS:    
         description: 'Number of threads to use for processing'    
         default: '1'    
-      
+
 jobs:  
   analyse:    
     runs-on: ubuntu-latest  
@@ -48,21 +56,47 @@ jobs:
     
       - name: Create analyse directory    
         run: mkdir -p ./Temp/analyse    
-              
-      - name: Run analyse    
-        env:    
-          OCR_OUTPUT_DIR: "./Temp/extractor"    
-          FINAL_OUTPUT_DIR: "./Temp/analyse"    
-          LLM_URL: ${{ secrets.LLM_URL }}    
-          LLM_KEY: ${{ secrets.LLM_KEY }}    
-          LLM_MODEL: ${{ github.event.inputs.LLM_Model }}    
-          CORRECTION_MODE: "NO"  
-          WINDOWS_TOKENS: ${{ github.event.inputs.WINDOWS_TOKENS }}    
-          THREADS: ${{ github.event.inputs.THREADS }}    
-        run: python analyse.py    
-          
-      - name: Upload final results    
-        uses: actions/upload-artifact@v4    
-        with:    
-          name: analyse-${{ github.event.inputs.Generate_Epub }}    
-          path: ./Temp/analyse
+
+      - name: Run analyse with model fallback and cycling  
+        run: |  
+            models=("${{ github.event.inputs.LLM_Model_1 }}" "${{ github.event.inputs.LLM_Model_2 }}" "${{ github.event.inputs.LLM_Model_3 }}")  
+            max_total_attempts=12
+            attempt=0  
+            
+            while [ $attempt -lt $max_total_attempts ]; do  
+            model_index=$((attempt % 3))  
+            model="${models[$model_index]}"  
+            model_attempt=$(((attempt / 3) + 1))  
+                
+            echo "Total attempt $((attempt + 1))/$max_total_attempts: Using model $((model_index + 1)) ($model) - attempt $model_attempt"  
+                
+            if OCR_OUTPUT_DIR="./Temp/extractor" \  
+                FINAL_OUTPUT_DIR="./Temp/analyse" \  
+                LLM_URL="${{ secrets.LLM_URL }}" \  
+                LLM_KEY="${{ secrets.LLM_KEY }}" \  
+                LLM_MODEL="$model" \  
+                CORRECTION_MODE="NO" \  
+                WINDOWS_TOKENS="${{ github.event.inputs.WINDOWS_TOKENS }}" \  
+                THREADS="${{ github.event.inputs.THREADS }}" \  
+                python analyse.py; then  
+                echo "Analysis successful with model: $model (attempt $model_attempt)"  
+                exit 0  
+            else  
+                echo "Analysis failed with model: $model (attempt $model_attempt)"  
+                attempt=$((attempt + 1))  
+                if [ $attempt -lt $max_total_attempts ]; then  
+                echo "Retrying in 10 seconds..."  
+                sleep 10  
+                else  
+                echo "All retry attempts exhausted. Analysis unsuccessful."  
+                exit 1  
+                fi  
+            fi  
+            done
+
+      - name: Upload final results      
+        uses: actions/upload-artifact@v4  
+        if: always()      
+        with:      
+            name: analyse-${{ github.event.inputs.Generate_Epub }}      
+            path: ./Temp/analyse
