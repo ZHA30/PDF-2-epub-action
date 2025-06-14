@@ -60,7 +60,7 @@ jobs:
       - name: Run analyse with model fallback and cycling  
         run: |  
             models=("${{ github.event.inputs.LLM_Model_1 }}" "${{ github.event.inputs.LLM_Model_2 }}" "${{ github.event.inputs.LLM_Model_3 }}")  
-            max_total_attempts=12
+            max_total_attempts=12  
             attempt=0  
             
             while [ $attempt -lt $max_total_attempts ]; do  
@@ -70,15 +70,17 @@ jobs:
                 
             echo "Total attempt $((attempt + 1))/$max_total_attempts: Using model $((model_index + 1)) ($model) - attempt $model_attempt"  
                 
-            if OCR_OUTPUT_DIR="./Temp/extractor" \  
-                FINAL_OUTPUT_DIR="./Temp/analyse" \  
-                LLM_URL="${{ secrets.LLM_URL }}" \  
-                LLM_KEY="${{ secrets.LLM_KEY }}" \  
-                LLM_MODEL="$model" \  
-                CORRECTION_MODE="NO" \  
-                WINDOWS_TOKENS="${{ github.event.inputs.WINDOWS_TOKENS }}" \  
-                THREADS="${{ github.event.inputs.THREADS }}" \  
-                python analyse.py; then  
+            # 设置环境变量  
+            export OCR_OUTPUT_DIR="./Temp/extractor"  
+            export FINAL_OUTPUT_DIR="./Temp/analyse"  
+            export LLM_URL="${{ secrets.LLM_URL }}"  
+            export LLM_KEY="${{ secrets.LLM_KEY }}"  
+            export LLM_MODEL="$model"  
+            export CORRECTION_MODE="NO"  
+            export WINDOWS_TOKENS="${{ github.event.inputs.WINDOWS_TOKENS }}"  
+            export THREADS="${{ github.event.inputs.THREADS }}"  
+                
+            if python analyse.py; then  
                 echo "Analysis successful with model: $model (attempt $model_attempt)"  
                 exit 0  
             else  
@@ -93,6 +95,7 @@ jobs:
                 fi  
             fi  
             done
+
 
       - name: Upload final results      
         uses: actions/upload-artifact@v4  
